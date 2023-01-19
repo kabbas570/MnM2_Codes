@@ -47,19 +47,31 @@ plt.figure()
 plt.imshow(gt[0,0,:,:])
 
 
+#transforms_all = tio.Compose({
+#       tio.RandomBiasField(): .15,  ## axis [0,1] or [1,2]
+#       tio.RandomGhosting(axes=([1,2])): 0.15,
+#       tio.RandomFlip(axes=([1,2])): .15,  ## axis [0,1] or [1,2]
+#       tio.RandomFlip(axes=([0,1])): .15,  ## axis [0,1] or [1,2]
+#       tio.RandomAffine(degrees=(40,0,0)): 0.3, ## for 2D rotation 
+#       tio.RandomMotion(degrees =(30) ):0.15 ,
+#       tio.RandomBlur(): 0.15,
+#       tio.RandomGamma(): 0.15,   
+#       tio.RandomNoise(mean=0.1,std=0.1):0.15,
+#})
 
-transforms_1 = tio.OneOf({
-        # tio.RandomFlip(): 0.2,
-        # tio.RandomElasticDeformation(num_control_points=7,locked_borders=2,): 0.3,
-        # tio.RandomAffine(scales=(0.9, 1.2),degrees=15): 0.3,
-        #tio.RandomBiasField(): 0.3,
-        #tio.RandomBlur(): 0.3,
-        #tio.RandomGamma(): 0.3,   
-        #tio.RandomAnisotropy():0.3,
-        #tio.RandomMotion():0.3,
+transforms_all = tio.OneOf({
+        tio.RandomBiasField(): .3,  ## axis [0,1] or [1,2]
+        tio.RandomGhosting(axes=([1,2])): 0.3,
+        tio.RandomFlip(axes=([1,2])): .3,  ## axis [0,1] or [1,2]
+        tio.RandomFlip(axes=([0,1])): .3,  ## axis [0,1] or [1,2]
+        tio.RandomAffine(degrees=(30,0,0)): 0.3, ## for 2D rotation 
+        tio.RandomMotion(degrees =(30) ):0.3 ,
+        tio.RandomBlur(): 0.3,
+        tio.RandomGamma(): 0.3,   
+        tio.RandomNoise(mean=0.1,std=0.1):0.20,
 })
 
-transformed_tensor = transforms_1(sample)
+transformed_tensor = transforms_all(sample)
 
 img = transformed_tensor['Image'].data
 gt = transformed_tensor['Mask'].data
