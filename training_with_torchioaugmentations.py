@@ -8,7 +8,7 @@ from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric
 from monai.networks.nets import UNet
 from torch.utils.data import DataLoader
-
+from monai.transforms import AsDiscrete, Compose
 
 def get_subjects_dataset(data_path, data_type="ED", transforms=None):
     # Use glob to find all images and labels with the correct naming convention
@@ -133,8 +133,9 @@ if __name__ == "__main__":
         strides=(2, 2, 2, 2),
         num_res_units=2,
     ).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    loss_function = DiceCELoss(to_onehot_y=True, softmax=True)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    # loss_function = DiceCELoss(to_onehot_y=True, softmax=True)
+    loss_function = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, reduction="mean", include_background=True)
 
     # Define a DiceMetric object to track the model's performance during training and validation
     dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
@@ -142,6 +143,8 @@ if __name__ == "__main__":
     # Specify the number of epochs to train for, and the interval at which to perform validation
     EPOCHS = 200
     val_interval = 2
+
+    make_onehot = Compose([AsDiscrete(to_onehot=4), lambda x: x[None]])
 
     # Loop over each epoch
     for epoch in range(EPOCHS):
@@ -176,7 +179,7 @@ if __name__ == "__main__":
                 # Update the training loss and dice score for the current batch
                 train_loss += loss.item()
                 outputs_m = torch.argmax(outputs, dim=1, keepdim=True)
-                dice_metric(y_pred=outputs_m, y=targets)
+                dice_metric(y_pred=make_onehot(outputs_m), y=make_onehot(targets))
 
                 # Update the progress bar to show the current batch's progress
                 pbar.update(1)
@@ -220,7 +223,7 @@ if __name__ == "__main__":
                         outputs_m = torch.argmax(outputs, dim=1, keepdim=True)
 
                         # update dice metric score for the current batch
-                        dice_metric(y_pred=outputs_m, y=targets)
+                        dice_metric(y_pred=make_onehot(outputs_m), y=make_onehot(targets))
 
                         # update progress bar
                         pbar.update(1)
@@ -230,3 +233,102 @@ if __name__ == "__main__":
 
             # print the epoch number and validation dice score
             print(f"Epoch: {epoch}/{EPOCHS}, Val Dice: {val_metric:.4f}")
+
+
+
+            # example of output with a small subset MnM2 training:
+            # Epoch: 0/200, Train loss: 2.1858, Train Dice: 0.1812
+            # Epoch: 1/200, Train loss: 1.8817, Train Dice: 0.2522
+            # Epoch: 1/200, Val Dice: 0.2671
+            # Epoch: 2/200, Train loss: 1.6798, Train Dice: 0.2707
+            # Epoch: 3/200, Train loss: 1.5051, Train Dice: 0.2662
+            # Epoch: 3/200, Val Dice: 0.2615
+            # Epoch: 4/200, Train loss: 1.3583, Train Dice: 0.2614
+            # Epoch: 5/200, Train loss: 1.2401, Train Dice: 0.2458
+            # Epoch: 5/200, Val Dice: 0.2448
+            # Epoch: 6/200, Train loss: 1.1464, Train Dice: 0.2448
+            # Epoch: 7/200, Train loss: 1.0740, Train Dice: 0.2444
+            # Epoch: 7/200, Val Dice: 0.2444
+            # Epoch: 8/200, Train loss: 1.0226, Train Dice: 0.2444
+            # Epoch: 9/200, Train loss: 0.9857, Train Dice: 0.2444
+            # Epoch: 9/200, Val Dice: 0.2445
+            # Epoch: 10/200, Train loss: 0.9577, Train Dice: 0.2444
+            # Epoch: 11/200, Train loss: 0.9418, Train Dice: 0.2459
+            # Epoch: 11/200, Val Dice: 0.2443
+            # Epoch: 12/200, Train loss: 0.9268, Train Dice: 0.2444
+            # Epoch: 13/200, Train loss: 0.9160, Train Dice: 0.2444
+            # Epoch: 13/200, Val Dice: 0.2444
+            # Epoch: 14/200, Train loss: 0.9058, Train Dice: 0.2443
+            # Epoch: 15/200, Train loss: 0.8968, Train Dice: 0.2444
+            # Epoch: 15/200, Val Dice: 0.2444
+            # Epoch: 16/200, Train loss: 0.8891, Train Dice: 0.2444
+            # Epoch: 17/200, Train loss: 0.8815, Train Dice: 0.2445
+            # Epoch: 17/200, Val Dice: 0.2444
+            # Epoch: 18/200, Train loss: 0.8712, Train Dice: 0.2444
+            # Epoch: 19/200, Train loss: 0.8589, Train Dice: 0.2444
+            # Epoch: 19/200, Val Dice: 0.2444
+            # Epoch: 20/200, Train loss: 0.8500, Train Dice: 0.2465
+            # Epoch: 21/200, Train loss: 0.8305, Train Dice: 0.2506
+            # Epoch: 21/200, Val Dice: 0.2485
+            # Epoch: 22/200, Train loss: 0.8029, Train Dice: 0.2819
+            # Epoch: 23/200, Train loss: 0.7527, Train Dice: 0.3220
+            # Epoch: 23/200, Val Dice: 0.3603
+            # Epoch: 24/200, Train loss: 0.7323, Train Dice: 0.3711
+            # Epoch: 25/200, Train loss: 0.7085, Train Dice: 0.3674
+            # Epoch: 25/200, Val Dice: 0.4158
+            # Epoch: 26/200, Train loss: 0.6678, Train Dice: 0.3935
+            # Epoch: 27/200, Train loss: 0.6633, Train Dice: 0.4016
+            # Epoch: 27/200, Val Dice: 0.4113
+            # Epoch: 28/200, Train loss: 0.6395, Train Dice: 0.4036
+            # Epoch: 29/200, Train loss: 0.5930, Train Dice: 0.4186
+            # Epoch: 29/200, Val Dice: 0.4332
+            # Epoch: 30/200, Train loss: 0.5762, Train Dice: 0.4433
+            # Epoch: 31/200, Train loss: 0.5513, Train Dice: 0.4457
+            # Epoch: 31/200, Val Dice: 0.4691
+            # Epoch: 32/200, Train loss: 0.5384, Train Dice: 0.4716
+            # Epoch: 33/200, Train loss: 0.5236, Train Dice: 0.4829
+            # Epoch: 33/200, Val Dice: 0.4973
+            # Epoch: 34/200, Train loss: 0.5134, Train Dice: 0.4890
+            # Epoch: 35/200, Val Dice: 0.5212
+            # Epoch: 36/200, Train loss: 0.4819, Train Dice: 0.5422
+            # Epoch: 37/200, Train loss: 0.4629, Train Dice: 0.5580
+            # Epoch: 37/200, Val Dice: 0.5648
+            # Epoch: 38/200, Train loss: 0.4542, Train Dice: 0.5742
+            # Epoch: 39/200, Train loss: 0.4493, Train Dice: 0.5827
+            # Epoch: 39/200, Val Dice: 0.6128
+            # Epoch: 40/200, Train loss: 0.4254, Train Dice: 0.6123
+            # Epoch: 41/200, Train loss: 0.4106, Train Dice: 0.6214
+            # Epoch: 41/200, Val Dice: 0.5933
+            # Epoch: 42/200, Train loss: 0.4191, Train Dice: 0.6018
+            # Epoch: 43/200, Train loss: 0.4084, Train Dice: 0.6352
+            # Epoch: 43/200, Val Dice: 0.6527
+            # Epoch: 44/200, Train loss: 0.3847, Train Dice: 0.6463
+            # Epoch: 45/200, Train loss: 0.3943, Train Dice: 0.6458
+            # Epoch: 45/200, Val Dice: 0.6512
+            # Epoch: 46/200, Train loss: 0.3851, Train Dice: 0.6542
+            # Epoch: 47/200, Train loss: 0.3737, Train Dice: 0.6766
+            # Epoch: 47/200, Val Dice: 0.6762
+            # Epoch: 48/200, Train loss: 0.3787, Train Dice: 0.6931
+            # Epoch: 49/200, Train loss: 0.3549, Train Dice: 0.7114
+            # Epoch: 49/200, Val Dice: 0.6494
+            # Epoch: 50/200, Train loss: 0.3730, Train Dice: 0.6814
+            # Epoch: 51/200, Train loss: 0.3391, Train Dice: 0.7405
+            # Epoch: 51/200, Val Dice: 0.7345
+            # Epoch: 52/200, Train loss: 0.3407, Train Dice: 0.7432
+            # Epoch: 53/200, Train loss: 0.3307, Train Dice: 0.7416
+            # Epoch: 53/200, Val Dice: 0.7706
+            # Epoch: 54/200, Train loss: 0.3259, Train Dice: 0.7461
+            # Epoch: 55/200, Train loss: 0.3024, Train Dice: 0.7855
+            # Epoch: 55/200, Val Dice: 0.8095
+            # Epoch: 56/200, Train loss: 0.2867, Train Dice: 0.8006
+            # Epoch: 57/200, Train loss: 0.2758, Train Dice: 0.8116
+            # Epoch: 57/200, Val Dice: 0.8281
+            # Epoch: 58/200, Train loss: 0.2770, Train Dice: 0.8188
+            # Epoch: 59/200, Train loss: 0.2865, Train Dice: 0.7872
+            # Epoch: 59/200, Val Dice: 0.8042
+            # Epoch: 60/200, Train loss: 0.2734, Train Dice: 0.8140
+            # Epoch: 61/200, Train loss: 0.2737, Train Dice: 0.8116
+            # Epoch: 61/200, Val Dice: 0.8269
+            # Epoch: 62/200, Train loss: 0.2636, Train Dice: 0.8209
+            # Epoch: 63/200, Train loss: 0.2650, Train Dice: 0.8102
+            # Epoch: 63/200, Val Dice: 0.8177
