@@ -47,6 +47,8 @@ if __name__ == "__main__":
         [
             # Resample the image to have a voxel size of 1.25mm
             tio.transforms.Resample(target=1.25),
+            # tio.ZNormalization(),
+            tio.RescaleIntensity(out_min_max=(0, 1)),
             # Crop or pad the image to a shape of [192, 192, 64]
             tio.transforms.CropOrPad(target_shape=[192, 192, 64]),
             # Randomly flip the image along any of the three axes with a 50% chance
@@ -94,12 +96,14 @@ if __name__ == "__main__":
         [
             # Resample the image to have a voxel size of 1.25mm
             tio.transforms.Resample(target=1.25),
+            # tio.ZNormalization(),   
+            tio.RescaleIntensity(out_min_max=(0, 1)),
             # Crop or pad the image to a shape of [192, 192, 64]
             tio.transforms.CropOrPad(target_shape=[192, 192, 64]),
         ]
     )
     # Set the path to the training and validation datasets, and specify the data type
-    data_path = "/data/KCLData/Datasets/MnM2/smalldataset"
+    data_path = "/mnt/shared/masad/Datasets/MnM2/traindataset"
     data_type = "ES"
 
     # Load the training data using the get_subjects_dataset function with the specified path and transforms
@@ -111,7 +115,7 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_data, batch_size=1, shuffle=True)
 
     # Load the validation data using the get_subjects_dataset function with the specified path and transforms
-    data_path = "/data/KCLData/Datasets/MnM2/smalldataset"
+    data_path = "/mnt/shared/masad/Datasets/MnM2/valdataset"
     val_data = get_subjects_dataset(
         data_path=data_path, data_type=data_type, transforms=val_transforms
     )
@@ -154,7 +158,7 @@ if __name__ == "__main__":
                 # Load the input and target data for the current batch, and move it to the specified device
                 inputs = batch_data["image"][tio.DATA]
                 targets = batch_data["label"][tio.DATA]
-                inputs, targets = inputs.to(device), targets.to(device)
+                inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device, dtype=torch.int)
 
                 # Reset the gradients for the optimizer
                 optimizer.zero_grad()
@@ -206,7 +210,7 @@ if __name__ == "__main__":
 
                         # send input and target data to device and convert to float32 dtype
                         inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(
-                            device, dtype=torch.float32
+                            device, dtype=torch.int
                         )
 
                         # get the output from the model
@@ -226,21 +230,3 @@ if __name__ == "__main__":
 
             # print the epoch number and validation dice score
             print(f"Epoch: {epoch}/{EPOCHS}, Val Dice: {val_metric:.4f}")
-
-
-            # example of output with a small subset MnM2 training:
-            # Epoch: 0/200, Train loss: 2.4972, Train Dice: 0.1751
-            # Epoch: 1/200, Train loss: 2.4416, Train Dice: 0.2050
-            # Epoch: 1/200, Val Dice: 0.1898
-            # Epoch: 2/200, Train loss: 2.3873, Train Dice: 0.1920
-            # Epoch: 3/200, Train loss: 2.3560, Train Dice: 0.1827
-            # Epoch: 3/200, Val Dice: 0.1933
-            # Epoch: 4/200, Train loss: 2.3199, Train Dice: 0.1887
-            # Epoch: 5/200, Train loss: 2.2810, Train Dice: 0.2024
-            # Epoch: 5/200, Val Dice: 0.2055
-            # Epoch: 6/200, Train loss: 2.2489, Train Dice: 0.2089
-            # Epoch: 7/200, Train loss: 2.2163, Train Dice: 0.1824
-            # Epoch: 7/200, Val Dice: 0.2173
-            # Epoch: 8/200, Train loss: 2.1838, Train Dice: 0.2058
-            # Epoch: 9/200, Train loss: 2.1526, Train Dice: 0.2217
-            # Epoch: 9/200, Val Dice: 0.2257
