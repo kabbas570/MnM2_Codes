@@ -2,128 +2,34 @@ import numpy as np
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 import os
-import matplotlib.pyplot as plt
 import pandas as pd
 import SimpleITK as sitk
 #from typing import List, Union, Tuple
-import torch
-import albumentations as A
-import cv2
-from torch.utils.data import SubsetRandomSampler
 
-from sklearn.model_selection import KFold
-#from torch.utils.data import Dataset, DataLoader,TensorDataset,random_split,SubsetRandomSampler, ConcatDataset
-
-
-
+import torchio as tio
            ###########  Dataloader  #############
-
 NUM_WORKERS=0
 PIN_MEMORY=True
 DIM_ = 256
    
-def Generate_Meta_(vendors_,scanners_,diseases_): 
-    temp = np.zeros([1,2,2])
-    if vendors_=='GE MEDICAL SYSTEMS':
-        temp[:,0,0] = 0.1
-        temp[:,0,1] = 0.2
-        temp[:,1,0] = 0.3
-        temp[:,1,1] = 0.4
-    if vendors_=='SIEMENS':
-        temp[:,0,0] = 0.1
-        temp[:,0,1] = 0.2
-        temp[:,1,0] = 0.3
-        temp[:,1,1] = 4.0
-    if vendors_=='Philips Medical Systems':
-        temp[:,0,0] = 0.01
-        temp[:,0,1] = 0.02
-        temp[:,1,0] = -0.1
-        temp[:,1,1] = +0.1
-    return temp
-          
-def same_depth(img):
-    temp = np.zeros([img.shape[0],17,DIM_,DIM_])
-    temp[:,0:img.shape[1],:,:] = img
-    return temp  
-    
-def LA_to_SA(SA_img,LA_img):
-    # Get sizes
-    SA_size = (SA_img.GetSize())   ## --> [H,W,C]
-    LA_size = (LA_img.GetSize())
-    
-    # Create a new short axis image the same size as the SA stack.
-    new_SA_img = sitk.Image(SA_size, sitk.sitkFloat64)
-    
-    # Loop over every pixel in the LA image, and put into into the new SA image
-    for x in range(0, LA_size[0]):
-        for y in range(0, LA_size[1]):
-            # Determine the physical location of the LA pixel
-            point = LA_img.TransformIndexToPhysicalPoint([x, y, 0])
-    
-            # Find which index this position maps to in the SA image
-            index_SA = SA_img.TransformPhysicalPointToIndex(point)
-    
-            # Check if the pixel is outside the bounds of the SA image
-            if index_SA[0] - 1 < 0 or index_SA[0] + 1 >= SA_img.GetSize()[0]:
-                continue
-            if index_SA[1] - 1 < 0 or index_SA[1] + 1 >= SA_img.GetSize()[1]:
-                continue
-            if index_SA[2] - 1 < 0 or index_SA[2] + 1 >= SA_img.GetSize()[2]:
-                continue
-    
-            # Assign the LA pixel to the voxel location in the new SA image
-            new_SA_img[index_SA[0], index_SA[1], index_SA[2]] = LA_img[x, y, 0]
-    
-            # Dilate the intensity (optional)
-            new_SA_img[index_SA[0] - 1, index_SA[1], index_SA[2]] = LA_img[x, y, 0]
-            new_SA_img[index_SA[0], index_SA[1] - 1, index_SA[2]] = LA_img[x, y, 0]
-            new_SA_img[index_SA[0], index_SA[1], index_SA[2] - 1] = LA_img[x, y, 0]
-            new_SA_img[index_SA[0] + 1, index_SA[1], index_SA[2]] = LA_img[x, y, 0]
-            new_SA_img[index_SA[0], index_SA[1] + 1, index_SA[2]] = LA_img[x, y, 0]
-            new_SA_img[index_SA[0], index_SA[1], index_SA[2] + 1] = LA_img[x, y, 0]
-    return new_SA_img
 
-
-def resample_image_SA(itk_image):
-    # get original spacing and size
+           
+     
+def resample_itk_image_LA(itk_image):
+    # Get original spacing and size
     original_spacing = itk_image.GetSpacing()
     original_size = itk_image.GetSize()
     
-    out_spacing=(1.25, 1.25, original_spacing[2])
-    
-    # calculate new size
-    out_size = [
-        int(np.round(original_size[0] * (original_spacing[0] / out_spacing[0]))),
-        int(np.round(original_size[1] * (original_spacing[1] / out_spacing[1]))),
-        int(np.round(original_size[2] * (original_spacing[2] / original_spacing[2])))
-    ]
-    # instantiate resample filter with properties and execute it
-    resample = sitk.ResampleImageFilter()
-    resample.SetOutputSpacing(out_spacing)
-    resample.SetSize(out_size)
-    resample.SetOutputDirection(itk_image.GetDirection())
-    resample.SetOutputOrigin(itk_image.GetOrigin())
-    resample.SetTransform(sitk.Transform())
-    resample.SetDefaultPixelValue(itk_image.GetPixelIDValue())
-    resample.SetInterpolator(sitk.sitkNearestNeighbor)
-    return resample.Execute(itk_image)
-    
+    out_spacing = (1,1,1)
 
-def resample_image_LA(itk_image):
-
-    # get original spacing and size
-    original_spacing = itk_image.GetSpacing()
-    original_size = itk_image.GetSize()
-    
-    out_spacing=(1.25, 1.25, original_spacing[2])
-    
-    # calculate new size
+    # Calculate new size
     out_size = [
         int(np.round(original_size[0] * (original_spacing[0] / out_spacing[0]))),
         int(np.round(original_size[1] * (original_spacing[1] / out_spacing[1]))),
         int(np.round(original_size[2] * (original_spacing[2] / out_spacing[2])))
     ]
-    # instantiate resample filter with properties and execute it
+
+    # Instantiate resample filter with properties
     resample = sitk.ResampleImageFilter()
     resample.SetOutputSpacing(out_spacing)
     resample.SetSize(out_size)
@@ -132,7 +38,12 @@ def resample_image_LA(itk_image):
     resample.SetTransform(sitk.Transform())
     resample.SetDefaultPixelValue(itk_image.GetPixelIDValue())
     resample.SetInterpolator(sitk.sitkNearestNeighbor)
-    return resample.Execute(itk_image)
+
+    # Execute resampling
+    resampled_image = resample.Execute(itk_image)
+    return resampled_image
+
+
     
 def crop_center_3D(img,cropx=DIM_,cropy=DIM_):
     z,x,y = img.shape
@@ -140,7 +51,7 @@ def crop_center_3D(img,cropx=DIM_,cropy=DIM_):
     starty = (y)//2 - cropy//2    
     return img[:,startx:startx+cropx, starty:starty+cropy]
 
-def Cropping_3d(org_dim3,org_dim1,org_dim2,DIM_,img_):
+def Cropping_3d(org_dim3,org_dim1,org_dim2,DIM_,img_):# org_dim3->numof channels
     
     if org_dim1<DIM_ and org_dim2<DIM_:
         padding1=int((DIM_-org_dim1)//2)
@@ -170,296 +81,58 @@ def Cropping_3d(org_dim3,org_dim1,org_dim2,DIM_,img_):
         img_ = crop_center_3D(temp)   
     return img_
 
-
-def Normalization_1(img):
-        mean=np.mean(img)
-        std=np.std(img)
-        img=(img-mean)/std
-        return img 
-    
-def Normalization_2(x):
-    return np.array((x - np.min(x)) / (np.max(x) - np.min(x)))
-
-def generate_label_1(gt,org_dim3):
-        temp_ = np.zeros([4,org_dim3,DIM_,DIM_])
-        temp_[0,:,:,:][np.where(gt==1)]=1
-        temp_[1,:,:,:][np.where(gt==2)]=1
-        temp_[2,:,:,:][np.where(gt==3)]=1
-        temp_[3,:,:,:][np.where(gt==0)]=1
-        return temp_
-        
-def generate_label_2(gt,org_dim3):
-    
-        temp_ = np.zeros([6,org_dim3,DIM_,DIM_])
-    
-        temp_[0,:,:,:][np.where(gt==1)]=1
-        temp_[1,:,:,:][np.where(gt==2)]=1
-        temp_[1,:,:,:][np.where(gt==3)]=1
-        
-        temp_[2,:,:,:][np.where(gt==2)]=1
-        temp_[3,:,:,:][np.where(gt==1)]=1
-        temp_[3,:,:,:][np.where(gt==3)]=1
-        
-        temp_[4,:,:,:][np.where(gt==3)]=1
-        temp_[5,:,:,:][np.where(gt==2)]=1
-        temp_[5,:,:,:][np.where(gt==1)]=1
-
-        return temp_
-
-def generate_label_3(gt,org_dim3):
-        temp_ = np.zeros([4,org_dim3,DIM_,DIM_])
-        temp_[0,:,:,:][np.where(gt==1)]=1
-        temp_[1,:,:,:][np.where(gt==2)]=1
-        temp_[2,:,:,:][np.where(gt==3)]=1
-        temp_[3,:,:,:][np.where(gt==0)]=1
-        return temp_
-
-
-def generate_label_4(gt,org_dim3):
-        temp_ = np.zeros([1,org_dim3,DIM_,DIM_])
-        temp_[0,:,:,:][np.where(gt==1)]=1
-        temp_[0,:,:,:][np.where(gt==2)]=1
-        temp_[0,:,:,:][np.where(gt==3)]=1
-        return temp_
-
-
-transform = A.Compose([
-    #A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, brightness_by_max=True, always_apply=False, p=0.2),
-    A.Downscale(scale_min=0.7, scale_max=0.9, interpolation=cv2.INTER_NEAREST, always_apply=False, p=0.2),
-    A.Rotate(limit=30, always_apply=False, p=0.2),
-    A.GaussNoise(always_apply=False, p = 0.2),
-    A.ElasticTransform(alpha=1, sigma=9,border_mode=cv2.BORDER_REPLICATE,interpolation=cv2.INTER_LINEAR, always_apply=False, p = 0.2)
-])
-
-class Dataset_V(Dataset): 
-    def __init__(self, df, images_folder,transformations=None):
-        self.df = df
+class Dataset_val(Dataset): 
+    def __init__(self,  images_folder):  ## If I apply Data Augmentation here, the validation loss becomes None. 
         self.images_folder = images_folder
-        self.vendors = df['VENDOR']
-        self.scanners = df['SCANNER']
-        self.diseases=df['DISEASE']
-        self.fields=df['FIELD']        
-        self.images_name = df['SUBJECT_CODE'] 
-        self.transformations = transformations
+
+        self.images_name = os.listdir(images_folder)
+        
     def __len__(self):
-        return self.vendors.shape[0]
+       return len(self.images_name)
     def __getitem__(self, index):
-        img_path = os.path.join(self.images_folder, str(self.images_name[index]).zfill(3),str(self.images_name[index]).zfill(3))
-        ## sa_es_img ####
-        img_SA_path = img_path+'_SA_ES.nii.gz'
-        img_SA = sitk.ReadImage(img_SA_path)    ## --> [H,W,C]
-        img_SA = resample_image_SA(img_SA )      ## --> [H,W,C]
-        img_SA = sitk.GetArrayFromImage(img_SA)   ## --> [C,H,W]
-        org_dim3 = img_SA.shape[0]
-        org_dim1 = img_SA.shape[1]
-        org_dim2 = img_SA.shape[2] 
-        img_SA = Cropping_3d(org_dim3,org_dim1,org_dim2,DIM_,img_SA)
-        #img_SA = Normalization_1(img_SA)
-        
-        ## sa_es_gt ####
-        img_SA_gt_path = img_path+'_SA_ES_gt.nii.gz'
-        img_SA_gt = sitk.ReadImage(img_SA_gt_path)
-        img_SA_gt = resample_image_SA(img_SA_gt)
-        img_SA_gt = sitk.GetArrayFromImage(img_SA_gt)   ## --> [C,H,W]
-        img_SA_gt = Cropping_3d(org_dim3,org_dim1,org_dim2,DIM_,img_SA_gt)  
-        
-       ### Augmentation for img_SA ####
-        img_SA = np.transpose(img_SA, (1,2,0))  ## to bring channel as last dimenssion 
-        img_SA_gt = np.transpose(img_SA_gt, (1,2,0))  ## to bring channel as last dimenssion 
-        
-        if self.transformations is not None:
-            augmentations = self.transformations(image = img_SA, mask = img_SA_gt)
-            img_SA = augmentations["image"]
-            img_SA_gt = augmentations["mask"]
-            img_SA = img_SA.copy()  # this is a workaround to fix the negative stride bug
-            img_SA_gt = img_SA_gt.copy()
-        img_SA = np.transpose(img_SA, (2,0,1))  ## to bring channel first 
-        img_SA_gt = np.transpose(img_SA_gt, (2,0,1))  ## to bring channel first 
-
-        img_SA = np.expand_dims(img_SA, axis=0)
-        img_SA_ES = same_depth(img_SA)
-
-        temp_SA_ES = generate_label_3(img_SA_gt,org_dim3)        
-        temp_SA_ES = same_depth(temp_SA_ES)
-        
-   
-        #####    LA Images #####
-        ## la_es_img ####
-        img_path = os.path.join(self.images_folder, str(self.images_name[index]).zfill(3),str(self.images_name[index]).zfill(3))
-        img_LA_path=img_path+'_LA_ES.nii.gz'
-        img_LA = sitk.ReadImage(img_LA_path)
-        img_LA = resample_image_LA(img_LA)
-        img_LA = sitk.GetArrayFromImage(img_LA)
-        org_dim3 = img_LA.shape[0]
-        org_dim1 = img_LA.shape[1]
-        org_dim2 = img_LA.shape[2] 
-        img_LA_ES = Cropping_3d(org_dim3,org_dim1,org_dim2,DIM_,img_LA)
-        #img_LA_ES = Normalization_1(img_LA_ES)
-
-        img_LA_gt_path = img_path+'_LA_ES_gt.nii.gz'
-        img_LA_gt = sitk.ReadImage(img_LA_gt_path)
-        img_LA_gt = resample_image_LA(img_LA_gt)
-        img_LA_gt = sitk.GetArrayFromImage(img_LA_gt)
-        img_LA_gt = Cropping_3d(org_dim3,org_dim1,org_dim2,DIM_,img_LA_gt)  
-        temp_LA_ES = generate_label_3(img_LA_gt,org_dim3)
-        temp_LA_ES = temp_LA_ES[:,0,:,:]
-        
-        all_three_ES = generate_label_4(img_LA_gt,org_dim3)
-        all_three_ES = all_three_ES[:,0,:,:]
+        img_path = os.path.join(self.images_folder,str(self.images_name[index]).zfill(3))
+        img = sitk.ReadImage(img_path)    ## --> [H,W,C]
+        #img = resample_itk_image_LA(img)      ## --> [H,W,C]
+        img = sitk.GetArrayFromImage(img)   ## --> [C,H,W]
+        # C = img.shape[0]
+        # H = img.shape[1]
+        # W = img.shape[2]
+        # img = Cropping_3d(C,H,W,256,img)
         
         
-        img_LA_ES = np.transpose(img_LA_ES, (1,2,0))  ## to bring channel as last dimenssion 
-        temp_LA_ES = np.transpose(temp_LA_ES, (1,2,0))  ## to bring channel as last dimenssion 
-        if self.transformations is not None:
-            augmentations = self.transformations(image = img_LA_ES, mask = temp_LA_ES)
-            img_LA_ES = augmentations["image"]
-            temp_LA_ES = augmentations["mask"]
-            img_LA_ES = img_LA_ES.copy()  # this is a workaround to fix the negative stride bug
-            temp_LA_ES = temp_LA_ES.copy()
-        img_LA_ES = np.transpose(img_LA_ES, (2,0,1))  ## to bring channel first 
-        temp_LA_ES = np.transpose(temp_LA_ES, (2,0,1))  ## to bring channel first 
+        return img
         
-        
-        ## ED images ##
-        ## sa_eD_img ####
-        img_SA_path = img_path+'_SA_ED.nii.gz'
-        img_SA = sitk.ReadImage(img_SA_path)    ## --> [H,W,C]
-        img_SA = resample_image_SA(img_SA )      ## --> [H,W,C]
-        img_SA = sitk.GetArrayFromImage(img_SA)   ## --> [C,H,W]
-        org_dim3 = img_SA.shape[0]
-        org_dim1 = img_SA.shape[1]
-        org_dim2 = img_SA.shape[2] 
-        img_SA = Cropping_3d(org_dim3,org_dim1,org_dim2,DIM_,img_SA)
-        #img_SA = Normalization_1(img_SA)
-        
-        ## sa_ed_gt ####
-        img_SA_gt_path = img_path+'_SA_ED_gt.nii.gz'
-        img_SA_gt = sitk.ReadImage(img_SA_gt_path)
-        img_SA_gt = resample_image_SA(img_SA_gt)
-        img_SA_gt = sitk.GetArrayFromImage(img_SA_gt)   ## --> [C,H,W]
-        img_SA_gt = Cropping_3d(org_dim3,org_dim1,org_dim2,DIM_,img_SA_gt)  
-        
-        ### Augmentation for img_SA ####
-        img_SA = np.transpose(img_SA, (1,2,0))  ## to bring channel as last dimenssion 
-        img_SA_gt = np.transpose(img_SA_gt, (1,2,0))  ## to bring channel as last dimenssion 
-         
-        if self.transformations is not None:
-             augmentations = self.transformations(image = img_SA, mask = img_SA_gt)
-             img_SA = augmentations["image"]
-             img_SA_gt = augmentations["mask"]
-             img_SA = img_SA.copy()  # this is a workaround to fix the negative stride bug
-             img_SA_gt = img_SA_gt.copy()
-        img_SA = np.transpose(img_SA, (2,0,1))  ## to bring channel first 
-        img_SA_gt = np.transpose(img_SA_gt, (2,0,1))  ## to bring channel first 
-         
-        img_SA = np.expand_dims(img_SA, axis=0)
-        img_SA_ED = same_depth(img_SA)
-
-        temp_SA_ED = generate_label_3(img_SA_gt,org_dim3)        
-        temp_SA_ED = same_depth(temp_SA_ED)
-
-        #####    LA Images #####
-        ## la_ed_img ####
-        img_path = os.path.join(self.images_folder, str(self.images_name[index]).zfill(3),str(self.images_name[index]).zfill(3))
-        img_LA_path=img_path+'_LA_ED.nii.gz'
-        img_LA = sitk.ReadImage(img_LA_path)
-        img_LA = resample_image_LA(img_LA)
-        img_LA = sitk.GetArrayFromImage(img_LA)
-        org_dim3 = img_LA.shape[0]
-        org_dim1 = img_LA.shape[1]
-        org_dim2 = img_LA.shape[2] 
-        img_LA_ED = Cropping_3d(org_dim3,org_dim1,org_dim2,DIM_,img_LA)
-       # img_LA_ED = Normalization_1(img_LA_ED)
-
-        img_LA_gt_path = img_path+'_LA_ED_gt.nii.gz'
-        img_LA_gt = sitk.ReadImage(img_LA_gt_path)
-        img_LA_gt = resample_image_LA(img_LA_gt)
-        img_LA_gt = sitk.GetArrayFromImage(img_LA_gt)
-        img_LA_gt = Cropping_3d(org_dim3,org_dim1,org_dim2,DIM_,img_LA_gt)  
-        temp_LA_ED = generate_label_3(img_LA_gt,org_dim3)
-        temp_LA_ED = temp_LA_ED[:,0,:,:]
-        
-        all_three_ED = generate_label_4(img_LA_gt,org_dim3)
-        all_three_ED = all_three_ED[:,0,:,:]
-        
-
-        ## meta data ##
-        vendors_ = self.vendors[index]
-        scanners_ = self.scanners[index]
-        diseases_ = self.diseases[index]
-        
-        M = Generate_Meta_(vendors_,scanners_,diseases_)
-        
-        img_LA_ED = np.transpose(img_LA_ED, (1,2,0))  ## to bring channel as last dimenssion 
-        temp_LA_ED = np.transpose(temp_LA_ED, (1,2,0))  ## to bring channel as last dimenssion 
-        if self.transformations is not None:
-            augmentations = self.transformations(image = img_LA_ED, mask = temp_LA_ED)
-            img_LA_ED = augmentations["image"]
-            temp_LA_ED = augmentations["mask"]
-            img_LA_ED = img_LA_ED.copy()  # this is a workaround to fix the negative stride bug
-            temp_LA_ED = temp_LA_ED.copy()
-        img_LA_ED = np.transpose(img_LA_ED, (2,0,1))  ## to bring channel first 
-        temp_LA_ED = np.transpose(temp_LA_ED, (2,0,1))  ## to bring channel first 
-        return img_LA_ES,temp_LA_ES[:,:,:],img_SA_ES,temp_SA_ES,img_LA_ED,temp_LA_ED[:,:,:],img_SA_ED,temp_SA_ED,self.images_name[index],M,all_three_ES,all_three_ED
-
-def Data_Loader_V(df,images_folder,batch_size,num_workers=NUM_WORKERS,pin_memory=PIN_MEMORY):
-    test_ids = Dataset_V(df=df ,images_folder=images_folder)
+def Data_Loader_val(images_folder,batch_size,num_workers=NUM_WORKERS,pin_memory=PIN_MEMORY):
+    test_ids = Dataset_val(images_folder=images_folder)
     data_loader = DataLoader(test_ids,batch_size=batch_size,num_workers=num_workers,pin_memory=pin_memory,shuffle=True)
     return data_loader
 
 
+val_imgs = r'C:\My_Data\M2M Data\data\data_2\three_vendor\SIEMENS\LA'
+
+train_loader = Data_Loader_val(val_imgs,batch_size = 1)
+#a = iter(train_loader)
+#a1 = next(a)
 
 
-val_imgs = r'C:\My_Data\M2M Data\data\data_2/train'
-val_csv_path = r'C:\My_Data\M2M Data\data\train.csv'
-df_val = pd.read_csv(val_csv_path)
 
-
-train_loader = Data_Loader_V(df_val,val_imgs,batch_size = 1)
-
-
+import torch
 
   ### METHOD 1 TO CALCULATE MEAN AND STD OF A DATA ##
   ###################################################
 def get_mean_std(data_loader):
     
-    c_sum,cs_sum,b = 0 ,0 ,0
-    for img_LA_ES,temp_LA_ES,img_SA_ES,temp_SA_ES,img_LA_ED,temp_LA_ED,img_SA_ED,temp_SA_ED,label,M,all_three_ES,all_three_ED in train_loader:
+    mean,std,n = 0 ,0 ,0
+    for img in train_loader:
         
-        c_sum += torch.mean(img_LA_ES,dim=[0,2,3])
-        cs_sum += torch.mean(img_LA_ES**2,dim=[0,2,3])
-        b +=1
+        mean += torch.mean(img)
+        std += torch.std(img)
+        n +=1
         
-    mean  = c_sum/b
-    std = (cs_sum/b - mean**2)**0.5
     
-    return mean,std
+    return mean/n,std/n
 
 mean,std = get_mean_std(train_loader)
 
 print(mean)
 print(std)
-
-  ### METHOD 2 TO CALCULATE MEAN AND STD OF A DATA ##
-  ###################################################
-psum    = torch.tensor([0.0, 0.0, 0.0])
-psum_sq = torch.tensor([0.0, 0.0, 0.0])
-
-for img_LA_ES,temp_LA_ES,img_SA_ES,temp_SA_ES,img_LA_ED,temp_LA_ED,img_SA_ED,temp_SA_ED,label,M,all_three_ES,all_three_ED in train_loader:
-    psum    += img_LA_ES.sum(axis        = [0, 2, 3])
-    psum_sq += (img_LA_ES ** 2).sum(axis = [0, 2, 3])
-
-####### FINAL CALCULATIONS
-
-# pixel count
-count = len(train_loader) * 256 * 256
-
-# mean and std
-total_mean = psum / count
-total_var  = (psum_sq / count) - (total_mean ** 2)
-total_std  = torch.sqrt(total_var)
-
-# output
-print('mean: '  + str(total_mean))
-print('std:  '  + str(total_std))
-
